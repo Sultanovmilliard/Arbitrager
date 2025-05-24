@@ -6,7 +6,7 @@ from aiogram.enums import ParseMode
 
 from arbitrage import find_arbitrage_opportunities
 
-BOT_TOKEN = "ВСТАВЬ_СЮДА_СВОЙ_ТОКЕН"
+BOT_TOKEN = "7735509800:AAHp5nUJmgVCMGdH9KeCln2LvJOAifUwCH0"
 CHECK_INTERVAL_MINUTES = 5
 
 bot = Bot(token=BOT_TOKEN)
