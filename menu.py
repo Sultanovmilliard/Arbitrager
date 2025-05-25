@@ -21,3 +21,13 @@ async def handle_amount_choice(callback: CallbackQuery):
     amount = int(callback.data.split("_")[1])
     await callback.answer()
     await callback.message.answer(f"Вы выбрали сумму {amount} ₽. Бот начнёт мониторинг и пришлёт уведомление при возможности арбитража.")
+from arbitrage import user_amounts  # ✅
+
+@router.callback_query(F.data.startswith("amount_"))
+async def handle_amount_choice(callback: CallbackQuery):
+    amount = int(callback.data.split("_")[1])
+    user_amounts[callback.from_user.id] = amount  # ✅
+    await callback.answer()
+    await callback.message.answer(
+        f"Вы выбрали сумму {amount} ₽. Бот начнёт мониторинг и пришлёт уведомление при возможности арбитража."
+    )
