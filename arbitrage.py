@@ -1,65 +1,68 @@
+import aiohttp
 import asyncio
 from aiogram import Bot
-import aiohttp
 
-# Словарь для хранения сделок пользователей
-user_deals = {}
+BYBIT_P2P_API = "https://api.bybit.com/spot/v1/public/p2p/order/list"
 
-# Добавить сделку пользователю и запустить таймер, если нужно
-async def add_deal_for_user(user_id: int, deal_info: str, bot: Bot):
-    if user_id not in user_deals or user_deals[user_id] is None:
-        user_deals[user_id] = []
-        # Запускаем задачу отправки уведомления через 60 секунд
-        asyncio.create_task(send_aggregated_deals(user_id, bot, wait_seconds=60))
-    user_deals[user_id].append(deal_info)
+async def fetch_bybit_p2p_orders(session, side: str, amount: int):
+    params = {
+        "coin": "USDT",
+        "fiat": "RUB",
+        "side": side,
+        "amount": amount,
+        "page": 1,
+        "limit": 50,
+    }
+    async with session.get(BYBIT_P2P_API, params=params, timeout=10) as resp:
+        resp.raise_for_status()
+        data = await resp.json()
+        return data.get("result", {}).get("data", [])
 
-# Отправить все сделки одним сообщением и очистить список
-async def send_aggregated_deals(user_id: int, bot: Bot, wait_seconds: int = 60):
-    await asyncio.sleep(wait_seconds)
-    deals = user_deals.get(user_id, [])
-    if deals:
-        message_text = "📢 Найдены арбитражные сделки:\n\n" + "\n\n".join(deals)
-        try:
-            await bot.send_message(user_id, message_text)
-        except Exception as e:
-            print(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
-        # Очистить сделки после отправки
-        user_deals[user_id] = []
+async def get_arbitrage_opportunities(amount: int):
+    async with aiohttp.ClientSession() as session:
+        sellers = await fetch_bybit_p2p_orders(session, "sell", amount)
+        buyers = await fetch_bybit_p2p_orders(session, "buy", amount)
 
-# Функция проверки арбитража (пример)
-async def check_arbitrage(bot: Bot, user_id: int, amount_rub: int):
-    # Здесь вставляй свой код для получения данных с API бирж
-    # Для примера используем фиктивные данные:
-    deals_found = [
-        {
-            "seller_nick": "seller1",
-            "buyer_nick": "buyer1",
-            "seller_url": "https://bybit.com/seller1",
-            "buyer_url": "https://bybit.com/buyer1",
-            "price_buy": 89.5,
-            "price_sell": 93.2,
-            "profit_percent": 4.14,
-            "profit_rub": 2200,
-        },
-        {
-            "seller_nick": "seller2",
-            "buyer_nick": "buyer2",
-            "seller_url": "https://bybit.com/seller2",
-            "buyer_url": "https://bybit.com/buyer2",
-            "price_buy": 89.6,
-            "price_sell": 92.8,
-            "profit_percent": 3.54,
-            "profit_rub": 1800,
-        }
-    ]
+        opportunities = []
+        for seller in sellers:
+            for buyer in buyers:
+                sell_price = float(seller['price'])
+                buy_price = float(buyer['price'])
+                if buy_price <= sell_price:
+                    continue
+                profit_percent = (buy_price - sell_price) / sell_price * 100
+                if profit_percent < 3:
+                    continue
+                opportunities.append({
+                    "seller_nick": seller["advertiser"]["nickName"],
+                    "seller_url": f"https://www.bybit.com/ru-RU/p2p/advertiser/{seller['advertiser']['userId']}",
+                    "buyer_nick": buyer["advertiser"]["nickName"],
+                    "buyer_url": f"https://www.bybit.com/ru-RU/p2p/advertiser/{buyer['advertiser']['userId']}",
+                    "sell_price": sell_price,
+                    "buy_price": buy_price,
+                    "profit_percent": profit_percent,
+                    "amount": amount,
+                })
+        return opportunities
 
-    for deal in deals_found:
-        text = (
-            f"👤 Продавец: [продавец]({deal['seller_url']})     "
-            f"🧑 Покупатель: [покупатель]({deal['buyer_url']})\n"
-            f"🌕 Купить USDT: {deal['price_buy']:.2f} ₽         "
-            f"🌑 Продать USDT: {deal['price_sell']:.2f} ₽\n"
-            f"🌗 Спред: 🟢 +{deal['profit_percent']:.2f}% "
-            f"(профит ~{deal['profit_rub']} ₽)"
+async def check_and_notify(bot: Bot, user_id: int, amount: int):
+    opportunities = await get_arbitrage_opportunities(amount)
+    if not opportunities:
+        return
+
+    # Формируем единое сообщение с несколькими сделками (умное сгруппирование)
+    messages = []
+    for opp in opportunities:
+        msg = (
+            f"👤 Продавец: [{opp['seller_nick']}]({opp['seller_url']})    "
+            f"🧑 Покупатель: [{opp['buyer_nick']}]({opp['buyer_url']})\n"
+            f"🌕 Купить USDT: {opp['sell_price']:.2f} ₽     "
+            f"🌑 Продать USDT: {opp['buy_price']:.2f} ₽\n"
+            f"🌗 Спред: 🟢 +{opp['profit_percent']:.2f}% (профит ~{int(opp['profit_percent'] / 100 * opp['amount'])} ₽)\n"
+            "------------------------\n"
         )
-        await add_deal_for_user(user_id, text, bot)
+        messages.append(msg)
+
+    full_message = f"💰 *Арбитраж найден по условиям ({amount} ₽)*\n\n" + "".join(messages)
+
+    await bot.send_message(user_id, full_message, parse_mode="Markdown")
