@@ -17,9 +17,9 @@ main_menu = ReplyKeyboardMarkup(
 amount_menu = ReplyKeyboardMarkup(
     resize_keyboard=True,
     keyboard=[
-        [KeyboardButton("10к–10к"), KeyboardButton("20к–20к")],
-        [KeyboardButton("30к–30к"), KeyboardButton("50к–50к")],
-        [KeyboardButton("100к–100к")]
+        [KeyboardButton("10k–10k"), KeyboardButton("20k–20k")],
+        [KeyboardButton("30k–30k"), KeyboardButton("50k–50k")],
+        [KeyboardButton("100k–100k")]
     ]
 )
 
@@ -27,12 +27,17 @@ amount_menu = ReplyKeyboardMarkup(
 async def handle_message(message: types.Message):
     if message.text == "💰 Сделки":
         await message.answer("Выбери диапазон суммы, по которой искать арбитраж:", reply_markup=amount_menu)
-    elif message.text in ["10к–10к", "20к–20к", "30к–30к", "50к–50к", "100к–100к"]:
-        amount = int(message.text.split("к")[0]) * 1000
-        user_amounts[message.from_user.id] = amount
-        await message.answer(f"Вы выбрали сумму: {amount:,} ₽. Теперь я ищу арбитраж по этой сумме...")
-
-        result = find_arbitrage(amount)
-        await message.answer(result, reply_markup=main_menu)
+    elif "k–" in message.text:
+        try:
+            raw = message.text.split("–")[0].replace("k", "000")
+            amount = int(raw)
+            await message.answer(f"Вы выбрали сумму: {amount:,} ₽.\nТеперь я ищу арбитраж по этой сумме...")
+            result = await find_arbitrage(amount, message.from_user.id)
+            await message.answer(result)
+        except Exception as e:
+            await message.answer(f"Ошибка при распознавании суммы: {e}")
     else:
-        await message.answer("Нажми кнопку ниже для начала.", reply_markup=main_menu)
+        await message.answer("Нажми кнопку 👇", reply_markup=main_menu)
+
+async def run_bot():
+    await dp.start_polling(bot)
