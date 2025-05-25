@@ -1,82 +1,65 @@
-import aiohttp
 import asyncio
-import logging
-
 from aiogram import Bot
+import aiohttp
 
-BYBIT_P2P_URL = "https://api2.bybit.com/fiat/otc/item/online"
-HEADERS = {
-    "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0"
-}
+# Словарь для хранения сделок пользователей
+user_deals = {}
 
+# Добавить сделку пользователю и запустить таймер, если нужно
+async def add_deal_for_user(user_id: int, deal_info: str, bot: Bot):
+    if user_id not in user_deals or user_deals[user_id] is None:
+        user_deals[user_id] = []
+        # Запускаем задачу отправки уведомления через 60 секунд
+        asyncio.create_task(send_aggregated_deals(user_id, bot, wait_seconds=60))
+    user_deals[user_id].append(deal_info)
 
-async def fetch_bybit(session, amount_rub: int, side: str):
-    payload = {
-        "userId": "",
-        "tokenId": "USDT",
-        "currencyId": "RUB",
-        "payment": [],
-        "side": side,
-        "size": 10,
-        "page": 1,
-        "amount": str(amount_rub),
-        "authMaker": False,
-        "canTrade": True
-    }
-    try:
-        async with session.post(BYBIT_P2P_URL, headers=HEADERS, json=payload, timeout=10) as response:
-            data = await response.json()
-            return data.get("result", {}).get("items", [])
-    except Exception as e:
-        logging.warning(f"Ошибка при запросе к ByBit: {e}")
-        return []
+# Отправить все сделки одним сообщением и очистить список
+async def send_aggregated_deals(user_id: int, bot: Bot, wait_seconds: int = 60):
+    await asyncio.sleep(wait_seconds)
+    deals = user_deals.get(user_id, [])
+    if deals:
+        message_text = "📢 Найдены арбитражные сделки:\n\n" + "\n\n".join(deals)
+        try:
+            await bot.send_message(user_id, message_text)
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+        # Очистить сделки после отправки
+        user_deals[user_id] = []
 
-
-def format_deal_notification(amount_rub: int, seller_nick: str, buyer_nick: str,
-                             seller_price: float, buyer_price: float,
-                             profit_percent: float, profit_rub: float) -> str:
-    seller_link = f"https://www.bybit.com/user/{seller_nick}"
-    buyer_link = f"https://www.bybit.com/user/{buyer_nick}"
-
-    return (
-        f"📊 Арбитраж найден по условиям ({amount_rub:,} ₽)\n\n"
-        f"👤 [Продавец]({seller_link})       🧑 [Покупатель]({buyer_link})\n"
-        f"🌕 Купить USDT: {seller_price:.2f} ₽         🌑 Продать USDT: {buyer_price:.2f} ₽\n\n"
-        f"🌗 Спред: 🟢 +{profit_percent:.2f}% (профит ~{profit_rub:,.0f} ₽)"
-    )
-
-
+# Функция проверки арбитража (пример)
 async def check_arbitrage(bot: Bot, user_id: int, amount_rub: int):
-    async with aiohttp.ClientSession() as session:
-        buy_offers = await fetch_bybit(session, amount_rub, side="Buy")
-        sell_offers = await fetch_bybit(session, amount_rub, side="Sell")
+    # Здесь вставляй свой код для получения данных с API бирж
+    # Для примера используем фиктивные данные:
+    deals_found = [
+        {
+            "seller_nick": "seller1",
+            "buyer_nick": "buyer1",
+            "seller_url": "https://bybit.com/seller1",
+            "buyer_url": "https://bybit.com/buyer1",
+            "price_buy": 89.5,
+            "price_sell": 93.2,
+            "profit_percent": 4.14,
+            "profit_rub": 2200,
+        },
+        {
+            "seller_nick": "seller2",
+            "buyer_nick": "buyer2",
+            "seller_url": "https://bybit.com/seller2",
+            "buyer_url": "https://bybit.com/buyer2",
+            "price_buy": 89.6,
+            "price_sell": 92.8,
+            "profit_percent": 3.54,
+            "profit_rub": 1800,
+        }
+    ]
 
-        if not buy_offers or not sell_offers:
-            logging.warning("Не удалось получить данные с ByBit.")
-            return
-
-        best_seller = sell_offers[0]
-        best_buyer = buy_offers[0]
-
-        seller_price = float(best_seller["price"])
-        buyer_price = float(best_buyer["price"])
-
-        profit_percent = ((buyer_price - seller_price) / seller_price) * 100
-        profit_rub = (buyer_price - seller_price) * (amount_rub / seller_price)
-
-        if profit_percent >= 3:
-            seller_nick = best_seller.get("nickName", "unknown_seller")
-            buyer_nick = best_buyer.get("nickName", "unknown_buyer")
-
-            text = format_deal_notification(
-                amount_rub=amount_rub,
-                seller_nick=seller_nick,
-                buyer_nick=buyer_nick,
-                seller_price=seller_price,
-                buyer_price=buyer_price,
-                profit_percent=profit_percent,
-                profit_rub=profit_rub
-            )
-
-            await bot.send_message(user_id, text, parse_mode="Markdown")
+    for deal in deals_found:
+        text = (
+            f"👤 Продавец: [продавец]({deal['seller_url']})     "
+            f"🧑 Покупатель: [покупатель]({deal['buyer_url']})\n"
+            f"🌕 Купить USDT: {deal['price_buy']:.2f} ₽         "
+            f"🌑 Продать USDT: {deal['price_sell']:.2f} ₽\n"
+            f"🌗 Спред: 🟢 +{deal['profit_percent']:.2f}% "
+            f"(профит ~{deal['profit_rub']} ₽)"
+        )
+        await add_deal_for_user(user_id, text, bot)
