@@ -1,35 +1,42 @@
-import aiohttp
+import asyncio
+import logging
+from aiogram import Bot
+from config import CHECK_INTERVAL, MIN_PROFIT_PERCENT
 
-async def find_arbitrage(amount, user_id=None):
-    try:
-        print(f"[ARBITRAGE] Запрос на сумму: {amount}")
-        url = "https://www.bybit.com/fiat/otc/item/online"
-        params = {
-            "tokenId": "USDT",
-            "currencyId": "RUB",
-            "payment": "",
-            "side": 0,
-            "size": str(amount),
-            "page": 1,
-            "rows": 10
+# 💡 Псевдо-функция: тут ты подставишь свой реальный ByBit API запрос
+async def get_bybit_arbitrage_opportunity(amount: int):
+    """
+    Возвращает сделку с профитом выше порога, если найдена.
+    Формат: {"price": ..., "seller": ..., "profit": ...}
+    """
+    # Здесь должен быть запрос к API ByBit
+    # Для отладки — просто имитируем профит
+    import random
+    fake_profit = round(random.uniform(1, 5), 2)
+    if fake_profit >= MIN_PROFIT_PERCENT:
+        return {
+            "price": 89.5,
+            "seller": "test_seller",
+            "profit": fake_profit
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, timeout=10) as resp:
-                print(f"[BYBIT STATUS] {resp.status}")
-                if resp.status != 200:
-                    return "Ошибка при получении цены с ByBit."
+    return None
 
-                data = await resp.json()
-                items = data.get("result", {}).get("items", [])
-                if not items:
-                    return "Нет доступных объявлений на ByBit."
+# Словарь активных пользователей и их выбранных сумм
+user_amounts = {}
 
-                price = float(items[0]["price"])
-                return (
-                    f"Найдена цена на ByBit:\n"
-                    f"Продажа USDT за {price:.2f} ₽\n"
-                    f"(по сумме {amount:,} ₽)"
-                )
-
-    except Exception as e:
-        return f"Ошибка при получении арбитража: {e}"
+async def start_arbitrage_monitoring(bot: Bot):
+    while True:
+        for user_id, amount in user_amounts.items():
+            try:
+                result = await get_bybit_arbitrage_opportunity(amount)
+                if result:
+                    text = (
+                        f"💰 Арбитраж найден!\n\n"
+                        f"Продавец: {result['seller']}\n"
+                        f"Курс: {result['price']} ₽/USDT\n"
+                        f"Профит: {result['profit']}%"
+                    )
+                    await bot.send_message(user_id, text)
+            except Exception as e:
+                logging.exception(f"Ошибка при проверке арбитража для {user_id}: {e}")
+        await asyncio.sleep(CHECK_INTERVAL)
