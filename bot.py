@@ -2,7 +2,7 @@
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "7735509800:AAHp5nUJmgVCMGdH9KeCln2LvJOAifUwCH0"
 bot = telebot.TeleBot(TOKEN)
 
 # Хранилище выбранной суммы (по user_id)
