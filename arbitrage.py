@@ -1,7 +1,7 @@
 import requests
 
-def get_bybit_p2p_price(amount, trade_type):
-    url = "https://api.bybit.com/fiat/otc/item/online"
+def get_bybit_price(amount: int, trade_type: str):
+    url = "https://api2.bybit.com/fiat/otc/item/online"
     params = {
         "userId": "",
         "tokenId": "USDT",
@@ -17,42 +17,31 @@ def get_bybit_p2p_price(amount, trade_type):
         "Origin": "https://www.bybit.com"
     }
 
-    print(f"[BYBIT] Запрос на сумму: {amount}")
     try:
         response = requests.get(url, params=params, headers=headers, timeout=10)
-        print(f"[BYBIT STATUS] {response.status_code}")
-        print(f"[BYBIT RESPONSE]: {response.text}")
+        if response.status_code != 200:
+            return None, f"[BYBIT STATUS] {response.status_code}"
 
-        data = response.json()
-        items = data.get("result", {}).get("items", [])
-        if not items:
-            print("[BYBIT] Пусто, нет объявлений.")
-            return None
-        return float(items[0]["price"])
-
+        data = response.json().get("result", {}).get("items", [])
+        if not data:
+            return None, "[BYBIT] Нет объявлений"
+        return float(data[0]["price"]), None
     except Exception as e:
-        print(f"[BYBIT ERROR] {e}")
-        return None
-
+        return None, f"[BYBIT ERROR] {e}"
 
 def find_arbitrage(amount):
-    try:
-        buy_price = get_bybit_p2p_price(amount, "BUY")
-        sell_price = get_bybit_p2p_price(amount, "SELL")
+    buy_price, buy_error = get_bybit_price(amount, "BUY")
+    sell_price, sell_error = get_bybit_price(amount, "SELL")
 
-        if buy_price is None or sell_price is None:
-            return "Недостаточно данных с биржи для расчёта арбитража."
+    if buy_error or sell_error:
+        return "Недостаточно данных с биржи для расчёта арбитража."
 
-        spread = (sell_price - buy_price) / buy_price * 100
-
-        if spread >= 3:
-            return (
-                f"Найдена арбитражная возможность:\n\n"
-                f"Купить USDT на ByBit за {buy_price:.2f} ₽\n"
-                f"Продать USDT на ByBit за {sell_price:.2f} ₽\n"
-                f"Спред: {spread:.2f}%"
-            )
-        else:
-            return f"Спред: {spread:.2f}%. Сделка невыгодна."
-    except Exception as e:
-        return f"Ошибка при получении арбитража: {e}"
+    spread = (sell_price - buy_price) / buy_price * 100
+    if spread >= 3:
+        return (
+            f"🔍 Арбитраж найден!\n"
+            f"Купить по: {buy_price:.2f} ₽\n"
+            f"Продать по: {sell_price:.2f} ₽\n"
+            f"📊 Профит: {spread:.2f}%"
+        )
+    return f"Спред: {spread:.2f}% — ниже 3%, арбитраж невыгоден."
