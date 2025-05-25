@@ -1,53 +1,70 @@
-# bot.py
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command, Text
+from aiogram.types import Message, CallbackQuery
+import asyncio
+from config import BOT_TOKEN, ADMIN_USER_ID, DEFAULT_AMOUNT_RUB, DEFAULT_SPREAD_THRESHOLD, DEFAULT_CHECK_INTERVAL
+from menu import amount_menu, spread_menu, interval_menu
 from arbitrage import check_arbitrage
-from spread_threshold import SpreadThresholdManager
-
-BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-spread_manager = SpreadThresholdManager()
+# Хранение настроек пользователя (можно потом заменить на БД)
+user_settings = {}
 
-# Кнопки порога спреда
-def get_spread_keyboard(user_id: int):
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    for val in [1, 2, 3, 4]:
-        text = f"{val}%"
-        # Выделяем выбранный порог жирным (если выбрано)
-        if spread_manager.get_threshold(user_id) == val:
-            text = f"✅ {text}"
-        keyboard.insert(InlineKeyboardButton(text=text, callback_data=f"spread_{val}"))
-    return keyboard
-
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id
-    if spread_manager.get_threshold(user_id) is None:
-        spread_manager.set_threshold(user_id, 3)  # По умолчанию 3%
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    user_settings[message.from_user.id] = {
+        "amount_rub": DEFAULT_AMOUNT_RUB,
+        "spread_threshold": DEFAULT_SPREAD_THRESHOLD,
+        "interval": DEFAULT_CHECK_INTERVAL
+    }
     await message.answer(
-        "Привет! Выбери порог спреда для уведомлений:",
-        reply_markup=get_spread_keyboard(user_id)
+        "Привет! Выберите сумму для арбитража:",
+        reply_markup=amount_menu()
     )
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("spread_"))
-async def spread_callback(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    value = int(callback.data.split("_")[1])
-    spread_manager.set_threshold(user_id, value)
-    await callback.message.edit_text(
-        f"Выбран порог спреда: {value}%",
-        reply_markup=get_spread_keyboard(user_id)
-    )
-    await callback.answer(f"Порог спреда изменён на {value}%")
+@dp.callback_query(Text(startswith="amount_"))
+async def amount_chosen(call: CallbackQuery):
+    amount = int(call.data.split("_")[1])
+    user_id = call.from_user.id
+    user_settings.setdefault(user_id, {})["amount_rub"] = amount
+    await call.message.answer(f"Сумма выбрана: {amount} ₽\nТеперь выберите порог спреда:", reply_markup=spread_menu())
+    await call.answer()
 
-# Здесь добавлять запуск проверки арбитража с выбранным порогом
-# и отправку сообщений пользователю
+@dp.callback_query(Text(startswith="spread_"))
+async def spread_chosen(call: CallbackQuery):
+    spread = int(call.data.split("_")[1])
+    user_id = call.from_user.id
+    user_settings.setdefault(user_id, {})["spread_threshold"] = spread
+    await call.message.answer(f"Порог спреда выбран: {spread}%\nТеперь выберите интервал проверки:", reply_markup=interval_menu())
+    await call.answer()
+
+@dp.callback_query(Text(startswith="interval_"))
+async def interval_chosen(call: CallbackQuery):
+    interval = int(call.data.split("_")[1])
+    user_id = call.from_user.id
+    user_settings.setdefault(user_id, {})["interval"] = interval
+    await call.message.answer(f"Интервал проверки установлен: {interval} секунд\nАрбитраж начнёт проверяться автоматически.")
+    await call.answer()
+
+async def arbitrage_loop():
+    while True:
+        for user_id, settings in user_settings.items():
+            try:
+                await check_arbitrage(bot, user_id,
+                                      settings.get("amount_rub", DEFAULT_AMOUNT_RUB),
+                                      settings.get("spread_threshold", DEFAULT_SPREAD_THRESHOLD))
+            except Exception as e:
+                print(f"Error in arbitrage check for user {user_id}: {e}")
+        # Берём максимальный интервал из всех пользователей, чтобы не перегружать цикл
+        max_interval = max(settings.get("interval", DEFAULT_CHECK_INTERVAL) for settings in user_settings.values())
+        await asyncio.sleep(max_interval)
 
 if __name__ == "__main__":
     import asyncio
-    from aiogram import executor
-    executor.start_polling(dp, skip_updates=True)
+    async def main():
+        await dp.start_polling()
+
+    asyncio.create_task(arbitrage_loop())
+    asyncio.run(main())
