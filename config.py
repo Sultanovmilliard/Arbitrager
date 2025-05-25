@@ -1,13 +1,14 @@
-import os
+BOT_TOKEN = 'твoй_токен_от_telegram'
 
-# Вставь свой токен Telegram-бота
-BOT_TOKEN = os.getenv("BOT_TOKEN") or "7623579455:AAHl_qRDh3Qcz9YRBhPRR7aXasIheVVYtzw"
+# ID пользователя (или список), кому слать уведомления
+ADMIN_USER_ID = 123456789  
 
-# Значения сумм, которые будут в кнопках
-AVAILABLE_AMOUNTS = [10000, 20000, 50000, 100000]
+# Настройки по умолчанию
+DEFAULT_AMOUNT_RUB = 50000
+DEFAULT_SPREAD_THRESHOLD = 3.0  # %
+DEFAULT_CHECK_INTERVAL = 60  # сек (60 = 1 минута)
 
-# Минимальный спред, с которого начинается уведомление
-MIN_PROFIT_PERCENT = 3.0
-
-# Интервал проверки (в секундах)
-CHECK_INTERVAL = 60
+# Поддерживаемые значения для настроек (кнопки)
+SPREAD_OPTIONS = [1, 2, 3, 4]  # проценты
+INTERVAL_OPTIONS = [10, 30, 60]  # секунды
+AMOUNT_OPTIONS = [10000, 20000, 50000, 100000]
