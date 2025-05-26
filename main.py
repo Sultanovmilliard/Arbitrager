@@ -1,10 +1,5 @@
-import asyncio
-from aiogram import Dispatcher
+from aiogram import executor
 from bot import dp
 
-async def main():
-    print("Бот запущен!")
-    await dp.start_polling()
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    executor.start_polling(dp, skip_updates=True)
