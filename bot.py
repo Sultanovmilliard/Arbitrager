@@ -2,117 +2,43 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 import asyncio
-import aiohttp
+from arbitrage import check_arbitrage
 
-TOKEN = "7623579455:AAHl_qRDh3Qcz9YRBhPRR7aXasIheVVYtzw"
+TOKEN = "YOUR_BOT_TOKEN_HERE"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 user_settings = {}
 
-# Кнопки выбора суммы
 amount_buttons = [
     InlineKeyboardButton(text="10,000 ₽", callback_data="amount_10000"),
     InlineKeyboardButton(text="30,000 ₽", callback_data="amount_30000"),
     InlineKeyboardButton(text="50,000 ₽", callback_data="amount_50000"),
     InlineKeyboardButton(text="100,000 ₽", callback_data="amount_100000"),
 ]
-amount_kb = InlineKeyboardMarkup(row_width=2)
-amount_kb.add(*amount_buttons)
 
-# Кнопки выбора порога спреда
 spread_buttons = [
     InlineKeyboardButton(text="1%", callback_data="spread_1"),
     InlineKeyboardButton(text="2%", callback_data="spread_2"),
     InlineKeyboardButton(text="3%", callback_data="spread_3"),
     InlineKeyboardButton(text="4%", callback_data="spread_4"),
 ]
-spread_kb = InlineKeyboardMarkup(row_width=4)
-spread_kb.add(*spread_buttons)
 
-# Кнопки выбора интервала проверки
 interval_buttons = [
     InlineKeyboardButton(text="10 секунд", callback_data="interval_10"),
     InlineKeyboardButton(text="30 секунд", callback_data="interval_30"),
     InlineKeyboardButton(text="1 минута", callback_data="interval_60"),
 ]
+
+start_kb = InlineKeyboardMarkup(row_width=2)
+start_kb.add(*amount_buttons)
+
+spread_kb = InlineKeyboardMarkup(row_width=4)
+spread_kb.add(*spread_buttons)
+
 interval_kb = InlineKeyboardMarkup(row_width=3)
 interval_kb.add(*interval_buttons)
-
-BYBIT_P2P_API = "https://api.bybit.com/spot/v1/p2p/order-list"
-
-async def fetch_bybit_p2p_orders(side: str, amount_rub: int, pay_types="Tinkoff", page=1, rows=50):
-    params = {
-        "side": side,
-        "payment_method": pay_types,
-        "asset": "USDT",
-        "fiat": "RUB",
-        "page": page,
-        "rows": rows,
-        "amount": amount_rub
-    }
-    async with aiohttp.ClientSession() as session:
-        async with session.get(BYBIT_P2P_API, params=params) as resp:
-            data = await resp.json()
-            if data.get("retCode") != 0:
-                return []
-            return data["result"]["data"]
-
-async def check_arbitrage(bot, user_id, amount_rub, spread_threshold_percent):
-    sellers = await fetch_bybit_p2p_orders(side="sell", amount_rub=amount_rub)
-    buyers = await fetch_bybit_p2p_orders(side="buy", amount_rub=amount_rub)
-
-    if not sellers or not buyers:
-        await bot.send_message(user_id, "Объявления с ByBit P2P не найдены.")
-        return
-
-    profitable_offers = []
-
-    for s_offer in sellers:
-        s_adv = s_offer["advertisement"]
-        s_price = float(s_adv["price"])
-        s_nick = s_adv["advertiserNickName"]
-        s_url = f"https://t.me/{s_nick}"
-
-        for b_offer in buyers:
-            b_adv = b_offer["advertisement"]
-            b_price = float(b_adv["price"])
-            b_nick = b_adv["advertiserNickName"]
-            b_url = f"https://t.me/{b_nick}"
-
-            if b_price <= s_price:
-                continue
-
-            spread = ((b_price - s_price) / s_price) * 100
-            profit_rub = (b_price - s_price) * amount_rub
-
-            if spread >= spread_threshold_percent:
-                profitable_offers.append({
-                    "seller_nick": s_nick,
-                    "seller_url": s_url,
-                    "buyer_nick": b_nick,
-                    "buyer_url": b_url,
-                    "price_sell": s_price,
-                    "price_buy": b_price,
-                    "spread": spread,
-                    "profit_rub": profit_rub
-                })
-
-    if not profitable_offers:
-        await bot.send_message(user_id, f"Арбитраж не найден по сумме {amount_rub:,} ₽ и порогу {spread_threshold_percent}%.")
-        return
-
-    msg = f"📊 Арбитраж найден по условиям ({amount_rub:,} ₽)\n\n"
-
-    for offer in profitable_offers:
-        msg += (
-            f"👤 [Продавец]({offer['seller_url']})     🧑 [Покупатель]({offer['buyer_url']})\n"
-            f"🌕 Купить USDT: {offer['price_sell']:.2f} ₽     🌑 Продать USDT: {offer['price_buy']:.2f} ₽\n"
-            f"🌗 Спред: 🟢 +{offer['spread']:.2f}% (профит ~{int(offer['profit_rub']):,} ₽)\n\n"
-        )
-
-    await bot.send_message(user_id, msg, parse_mode="Markdown")
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -124,7 +50,7 @@ async def cmd_start(message: Message):
     }
     await message.answer(
         "Привет! Выберите сумму для арбитража:",
-        reply_markup=amount_kb
+        reply_markup=start_kb
     )
 
 @dp.callback_query(F.data.startswith("amount_"))
@@ -158,6 +84,7 @@ async def interval_chosen(call: CallbackQuery):
         f"Интервал проверки установлен: {interval} секунд.\nТеперь бот будет автоматически проверять арбитраж."
     )
     await call.answer()
+
     asyncio.create_task(arbitrage_loop(user_id))
 
 async def arbitrage_loop(user_id: int):
