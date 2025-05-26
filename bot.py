@@ -1,20 +1,15 @@
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, Text
-from aiogram.filters import Text
-from aiogram.types import Message, CallbackQuery
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 import asyncio
-from arbitrage import check_arbitrage
 
-TOKEN = "YOUR_BOT_TOKEN_HERE"
+TOKEN = "YOUR_BOT_TOKEN_HERE"  # Вставь сюда токен
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Храним настройки пользователей в памяти (можно заменить на БД)
 user_settings = {}
 
-# Кнопки выбора суммы
 amount_buttons = [
     InlineKeyboardButton(text="10,000 ₽", callback_data="amount_10000"),
     InlineKeyboardButton(text="30,000 ₽", callback_data="amount_30000"),
@@ -22,7 +17,6 @@ amount_buttons = [
     InlineKeyboardButton(text="100,000 ₽", callback_data="amount_100000"),
 ]
 
-# Кнопки выбора порога спреда
 spread_buttons = [
     InlineKeyboardButton(text="1%", callback_data="spread_1"),
     InlineKeyboardButton(text="2%", callback_data="spread_2"),
@@ -30,7 +24,6 @@ spread_buttons = [
     InlineKeyboardButton(text="4%", callback_data="spread_4"),
 ]
 
-# Кнопки выбора интервала проверки
 interval_buttons = [
     InlineKeyboardButton(text="10 секунд", callback_data="interval_10"),
     InlineKeyboardButton(text="30 секунд", callback_data="interval_30"),
@@ -49,7 +42,6 @@ interval_kb.add(*interval_buttons)
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     user_id = message.from_user.id
-    # Устанавливаем значения по умолчанию
     user_settings[user_id] = {
         "amount_rub": 10000,
         "spread_threshold": 3,
@@ -66,8 +58,7 @@ async def amount_chosen(call: CallbackQuery):
     amount = int(call.data.split("_")[1])
     user_settings.setdefault(user_id, {})["amount_rub"] = amount
     await call.message.answer(
-        f"Вы выбрали сумму: {amount:,} ₽\n"
-        f"Теперь выберите порог спреда для уведомлений:",
+        f"Вы выбрали сумму: {amount:,} ₽\nТеперь выберите порог спреда для уведомлений:",
         reply_markup=spread_kb
     )
     await call.answer()
@@ -78,8 +69,7 @@ async def spread_chosen(call: CallbackQuery):
     spread = int(call.data.split("_")[1])
     user_settings.setdefault(user_id, {})["spread_threshold"] = spread
     await call.message.answer(
-        f"Порог спреда установлен: {spread}%\n"
-        f"Выберите интервал проверки арбитража:",
+        f"Порог спреда установлен: {spread}%\nВыберите интервал проверки арбитража:",
         reply_markup=interval_kb
     )
     await call.answer()
@@ -90,12 +80,10 @@ async def interval_chosen(call: CallbackQuery):
     interval = int(call.data.split("_")[1])
     user_settings.setdefault(user_id, {})["interval"] = interval
     await call.message.answer(
-        f"Интервал проверки установлен: {interval} секунд.\n"
-        f"Теперь бот будет автоматически проверять арбитраж."
+        f"Интервал проверки установлен: {interval} секунд.\nТеперь бот будет автоматически проверять арбитраж."
     )
     await call.answer()
 
-    # Запускаем задачу проверки арбитража в фоне
     asyncio.create_task(arbitrage_loop(user_id))
 
 async def arbitrage_loop(user_id: int):
@@ -104,12 +92,8 @@ async def arbitrage_loop(user_id: int):
         if not settings:
             break
         try:
-            await check_arbitrage(
-                bot,
-                user_id,
-                amount_rub=settings["amount_rub"],
-                spread_threshold_percent=settings["spread_threshold"]
-            )
+            # Заготовка - замени на реальную проверку
+            await bot.send_message(user_id, f"Проверяем арбитраж: сумма {settings['amount_rub']}, порог {settings['spread_threshold']}%")
         except Exception as e:
             await bot.send_message(user_id, f"Ошибка при проверке арбитража: {e}")
         await asyncio.sleep(settings["interval"])
