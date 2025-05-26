@@ -5,7 +5,7 @@ from config import BOT_TOKEN
 
 async def main():
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
+    dp = Dispatcher(bot)
     dp.include_router(router)
     await dp.start_polling(bot)
 
