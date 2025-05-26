@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 import asyncio
 from arbitrage import check_arbitrage
 
-TOKEN = "YOUR_BOT_TOKEN_HERE"
+TOKEN = "7623579455:AAHl_qRDh3Qcz9YRBhPRR7aXasIheVVYtzw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
